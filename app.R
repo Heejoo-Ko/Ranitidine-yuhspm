@@ -1,4 +1,4 @@
-library(shiny);library(DT);library(shinycustomloader);library(ggplot2);library(meta);library(forestplot);library(scales);library(data.table)
+library(shiny);library(DT);library(shinycustomloader);library(ggplot2);library(meta);library(forestplot);library(scales);library(data.table);library(Rcpp)
 source("global.R")
 options(shiny.sanitize.errors = F)
 
@@ -64,7 +64,8 @@ ui <- navbarPage("Ranitidine",
                                                    ),
                                                    div(style = "display: inline-block;vertical-align:top;",
                                                        downloadButton("downloadKaplanMeierPlotPng", label = "Download plot as PNG"),
-                                                       downloadButton("downloadKaplanMeierPlotEmf", label = "Download plot as EMF")
+                                                       # downloadButton("downloadKaplanMeierPlotEmf", label = "Download plot as EMF")
+                                                       downloadButton("downloadKaplanMeierPlotPPTX", label = "Download plot as PPTX")
                                                    )),
                                           tabPanel("Propensity scores",
                                                    radioButtons("database_ps", "Database", names.study, names.study[1], inline = T),
@@ -78,7 +79,8 @@ ui <- navbarPage("Ranitidine",
                                                    ),
                                                    div(style = "display: inline-block;vertical-align:top;",
                                                        downloadButton("downloadPsDistPlotPng", label = "Download plot as PNG"),
-                                                       downloadButton("downloadPsDistPlotEmf", label = "Download plot as EMF")
+                                                       # downloadButton("downloadPsDistPlotEmf", label = "Download plot as EMF")
+                                                       downloadButton("downloadPsDistPlotPPTX", label = "Download plot as PPTX")
                                                    )),
                                           tabPanel("Covariate balance",
                                                    radioButtons("database_bal", "Database", names.study, names.study[1], inline = T),
@@ -92,7 +94,8 @@ ui <- navbarPage("Ranitidine",
                                                    ),
                                                    div(style = "display: inline-block;vertical-align:top;",
                                                        downloadButton("downloadBalancePlotPng", label = "Download plot as PNG"),
-                                                       downloadButton("downloadBalancePlotEmf", label = "Download plot as EMF")
+                                                       # downloadButton("downloadBalancePlotEmf", label = "Download plot as EMF")
+                                                       downloadButton("downloadBalancePlotPPTX", label = "Download plot as PPTX")
                                                    ),
                                                    br(),
                                                    h4("Top SMD info"),
@@ -117,7 +120,8 @@ ui <- navbarPage("Ranitidine",
                                                    ),
                                                    div(style = "display: inline-block;vertical-align:top;",
                                                        downloadButton("downloadSystematicErrorPlotPng", label = "Download plot as PNG"),
-                                                       downloadButton("downloadSystematicErrorPlotEmf", label = "Download plot as EMF")
+                                                       # downloadButton("downloadSystematicErrorPlotEmf", label = "Download plot as EMF")
+                                                       downloadButton("downloadSystematicErrorPlotPPTX", label = "Download plot as PPTX")
                                                    )),
                                           tabPanel("Various outcome",
                                                    selectInput("database_vout", "Database", names.study, names.study, multiple = T),
@@ -128,7 +132,8 @@ ui <- navbarPage("Ranitidine",
                                                    ),
                                                    div(style = "display: inline-block;vertical-align:top;",
                                                        downloadButton("downloadvoutPlotPng", label = "Download plot as PNG"),
-                                                       downloadButton("downloadvoutPlotEmf", label = "Download plot as EMF")
+                                                       downloadButton("downloadvoutPlotEmf", label = "Download plot as EMF"),
+                                                       downloadButton("downloadvoutPlotPPTX", label = "Download plot as PPTX")
                                                    )),
                                           tabPanel("HR distribution",
                                                    selectInput("database_HRmeta", "Database", names.study, names.study, multiple = T),
@@ -145,7 +150,8 @@ ui <- navbarPage("Ranitidine",
                                                                         ),
                                                                         div(style = "display: inline-block;vertical-align:top;",
                                                                             downloadButton("downloadrrdistrPlotPng", label = "Download plot as PNG"),
-                                                                            downloadButton("downloadrrdistrPlotEmf", label = "Download plot as EMF")
+                                                                            # downloadButton("downloadrrdistrPlotEmf", label = "Download plot as EMF")
+                                                                            downloadButton("downloadrrdistrPlotPPTX", label = "Download plot as PPTX")
                                                                         )
                                                                ),
                                                                tabPanel("Meta calibration", 
@@ -165,7 +171,8 @@ ui <- navbarPage("Ranitidine",
                                                    ),
                                                    div(style = "display: inline-block;vertical-align:top;",
                                                        downloadButton("downloadsensPlotPng", label = "Download plot as PNG"),
-                                                       downloadButton("downloadsensPlotEmf", label = "Download plot as EMF")
+                                                       # downloadButton("downloadsensPlotEmf", label = "Download plot as EMF")
+                                                       downloadButton("downloadsensPlotPPTX", label = "Download plot as PPTX")
                                                    ))
                               )
                               
@@ -174,8 +181,6 @@ ui <- navbarPage("Ranitidine",
                           
                  )
 )
-
-
 
 
 server <- function(input, output, session) {
@@ -225,14 +230,16 @@ server <- function(input, output, session) {
     tb1.agg[, `:=`(beforeMatchingStdDiff = (beforeMatchingMeanTreated - beforeMatchingMeanComparator)/sqrt((beforeMatchingMeanTreated * (1 - beforeMatchingMeanTreated) + beforeMatchingMeanComparator * (1 - beforeMatchingMeanComparator))/2),
                    afterMatchingStdDiff = (afterMatchingMeanTreated - afterMatchingMeanComparator)/sqrt((afterMatchingMeanTreated * (1 - afterMatchingMeanTreated) + afterMatchingMeanComparator * (1 - afterMatchingMeanComparator))/2))]
     
-    
-    for (v in c("beforeMatchingStdDiff", "afterMatchingStdDiff")){
-      if (grepl(v, "beforeMatchingStdDiff")){
-        tb1.agg[covariateName == "age in years", ][[v]]  <- weighted.mean(sapply(split.common, function(d){d[covariateName == "age in years", ][[v]]}), nn.original()$target_subjects + nn.original()$comparator_subjects)
-      } else{
-        tb1.agg[covariateName == "age in years", ][[v]]  <- weighted.mean(sapply(split.common, function(d){d[covariateName == "age in years", ][[v]]}), nn()$target_subjects + nn()$comparator_subjects)
-      }
+    if (grepl("age in years", tb1.agg$covariateName)){
+      for (v in c("beforeMatchingStdDiff", "afterMatchingStdDiff")){
+        if (grepl(v, "beforeMatchingStdDiff")){
+          tb1.agg[covariateName == "age in years", ][[v]]  <- weighted.mean(sapply(split.common, function(d){d[covariateName == "age in years", ][[v]]}), nn.original()$target_subjects + nn.original()$comparator_subjects)
+        } else{
+          tb1.agg[covariateName == "age in years", ][[v]]  <- weighted.mean(sapply(split.common, function(d){d[covariateName == "age in years", ][[v]]}), nn()$target_subjects + nn()$comparator_subjects)
+        }
+      } 
     }
+    
     
     
     
@@ -342,7 +349,7 @@ server <- function(input, output, session) {
     fluidRow(
       column(4,
              selectizeInput("forest_file_ext", "File extension (dpi = 300)", 
-                            choices = c("jpg","pdf", "tiff", "svg", "emf"), multiple = F, 
+                            choices = c("jpg","pdf", "tiff", "svg", "emf", "PPTX"), multiple = F, 
                             selected = "emf"
              )
       ),
@@ -439,7 +446,10 @@ server <- function(input, output, session) {
                        )
                        dev.off()
                        
-                     } 
+                     } else if (input$forest_file_ext == "PPTX"){
+                       
+                       #
+                     }
                      
                    })
       
@@ -457,7 +467,7 @@ server <- function(input, output, session) {
     fluidRow(
       column(4,
              selectizeInput("funnel_file_ext", "File extension (dpi = 300)", 
-                            choices = c("jpg","pdf", "tiff", "svg", "emf"), multiple = F, 
+                            choices = c("jpg","pdf", "tiff", "svg", "emf", "PPTX"), multiple = F, 
                             selected = "emf"
              )
       ),
@@ -516,7 +526,19 @@ server <- function(input, output, session) {
                                 legend.pos = "topright", backtransf = "backtransf" %in% input$option_funnel)
                        dev.off()
                        
-                     } 
+                     } else if (input$funnel_file_ext == "PPTX"){
+                       
+                       # 실행 되지 않는 코드
+                       # my_funnel_graph <- rvg::dml(ggobj  = ggpubr::as_ggplot(mkfunnel(obj.meta(), input$fixed_random, level = 0.95, studlab = "studlab" %in% input$option_funnel, yaxis = input$ytype_funnel, contour = "contour" %in% input$option_funnel, 
+                       #                                                                 legend.pos = "topright", backtransf = "backtransf" %in% input$option_funnel)))
+                       # 
+                       # doc <- officer::read_pptx()
+                       # doc <- officer::add_slide(doc, layout = "Title and Content", master = "Office Theme")
+                       # doc <- officer::ph_with(doc, my_funnel_graph, location = officer::ph_location(width = input$fig_width_funnel, height =input$fig_height_funnel,))
+                       # 
+                       # print(doc, target = file)
+                       
+                     }
                      
                    })
       
@@ -565,15 +587,36 @@ server <- function(input, output, session) {
                                                          ggplot2::ggsave(file, plot = kaplanMeierPlot(), width = input$width_km, height = input$height_km, dpi = 600)
                                                        })
   
-  output$downloadKaplanMeierPlotEmf <- downloadHandler(filename = paste0("km_", input$database_kap, "_", names(which(list.idinfo$exposure == input$target_tb1)), "_", names(which(list.idinfo$exposure == input$comparator_tb1)), "_",
-                                                                         names(which(list.idinfo$outcome == input$outcome_tb1)), "_", names(which(list.idinfo$analysis == input$analysis_tb1)), ".emf"), 
-                                                       contentType = "application/emf", 
-                                                       content = function(file) {
-                                                         devEMF::emf(file, width = input$width_km, height = input$height_km, emfPlus = F, coordDPI = 600)
-                                                         plot(kaplanMeierPlot())
-                                                         dev.off()
-                                                       })
+  # output$downloadKaplanMeierPlotEmf <- downloadHandler(filename = paste0("km_", input$database_kap, "_", names(which(list.idinfo$exposure == input$target_tb1)), "_", names(which(list.idinfo$exposure == input$comparator_tb1)), "_",
+  #                                                                        names(which(list.idinfo$outcome == input$outcome_tb1)), "_", names(which(list.idinfo$analysis == input$analysis_tb1)), ".emf"), 
+  #                                                      contentType = "application/emf", 
+  #                                                      content = function(file) {
+  #                                                        devEMF::emf(file, width = input$width_km, height = input$height_km, emfPlus = F, coordDPI = 600)
+  #                                                        plot(kaplanMeierPlot())
+  #                                                        dev.off()
+  #                                                      })
   
+  output$downloadKaplanMeierPlotPPTX <- downloadHandler(filename = paste0("km_", input$database_kap, "_", names(which(list.idinfo$exposure == input$target_tb1)), "_", names(which(list.idinfo$exposure == input$comparator_tb1)), "_",
+                                                                         names(which(list.idinfo$outcome == input$outcome_tb1)), "_", names(which(list.idinfo$analysis == input$analysis_tb1)), ".pptx"), 
+                                                       
+                                                       content = function(file) {
+                                                         withProgress(message = 'Download in progress',
+                                                                      detail = 'This may take a while...', value = 0, {
+                                                                        for (i in 1:15) {
+                                                                          incProgress(1/15)
+                                                                          Sys.sleep(0.01)
+                                                                        }
+                                                                        
+                                                                        my_km_graph <- rvg::dml(ggobj  = ggpubr::as_ggplot(kaplanMeierPlot()))
+                                            
+                                                                        doc <- officer::read_pptx()
+                                                                        doc <- officer::add_slide(doc, layout = "Title and Content", master = "Office Theme")
+                                                                        doc <- officer::ph_with(doc, my_km_graph, location = officer::ph_location(width = input$width_km, height = input$height_km))
+                                                                        
+                                                                        print(doc, target = file)
+                                                                      })     
+                                                       }
+                                                       )
   
   output$kaplanMeierPlotPlotCaption <- renderUI({
     text <- "<strong>Figure 5.</strong> Kaplan Meier plot, showing survival as a function of time. This plot
@@ -604,14 +647,34 @@ server <- function(input, output, session) {
                                                     ggplot2::ggsave(file, plot = psDistPlot(), width = input$width_ps, height = input$height_ps, dpi = 600)
                                                   })
   
-  output$downloadPsDistPlotEmf <- downloadHandler(filename = paste0("ps_", input$database_ps, "_", names(which(list.idinfo$exposure == input$target_tb1)), "_", names(which(list.idinfo$exposure == input$comparator_tb1)), "_",
-                                                                    "_", names(which(list.idinfo$analysis == input$analysis_tb1)), ".emf"), 
-                                                  contentType = "application/emf", 
+  # output$downloadPsDistPlotEmf <- downloadHandler(filename = paste0("ps_", input$database_ps, "_", names(which(list.idinfo$exposure == input$target_tb1)), "_", names(which(list.idinfo$exposure == input$comparator_tb1)), "_",
+  #                                                                   "_", names(which(list.idinfo$analysis == input$analysis_tb1)), ".emf"), 
+  #                                                 contentType = "application/emf", 
+  #                                                 content = function(file) {
+  #                                                   devEMF::emf(file, width = input$width_ps, height = input$height_ps, emfPlus = T, coordDPI = 600)
+  #                                                   plot(psDistPlot())
+  #                                                   dev.off()
+  #                                                 })
+  output$downloadPsDistPlotPPTX <- downloadHandler(filename = paste0("ps_", input$database_ps, "_", names(which(list.idinfo$exposure == input$target_tb1)), "_", names(which(list.idinfo$exposure == input$comparator_tb1)), "_",
+                                                                    "_", names(which(list.idinfo$analysis == input$analysis_tb1)), ".pptx"), 
                                                   content = function(file) {
-                                                    devEMF::emf(file, width = input$width_ps, height = input$height_ps, emfPlus = T, coordDPI = 600)
-                                                    plot(psDistPlot())
-                                                    dev.off()
-                                                  })
+                                                    withProgress(message = 'Download in progress',
+                                                                 detail = 'This may take a while...', value = 0, {
+                                                                   for (i in 1:15) {
+                                                                     incProgress(1/15)
+                                                                     Sys.sleep(0.01)
+                                                                   }
+                                                                   
+                                                                   my_ps_graph <- rvg::dml(ggobj  = psDistPlot())
+                                                                   
+                                                                   doc <- officer::read_pptx()
+                                                                   doc <- officer::add_slide(doc, layout = "Title and Content", master = "Office Theme")
+                                                                   doc <- officer::ph_with(doc, my_ps_graph, location = officer::ph_location(width = input$width_ps, height = input$height_ps))
+                                                                   
+                                                                   print(doc, target = file)
+                                                                 })     
+                                                  }
+                                                  )
   
   
   
@@ -634,14 +697,36 @@ server <- function(input, output, session) {
                                                      ggplot2::ggsave(file, plot = balancePlot(),  width = input$width_bal, height = input$height_bal, dpi = 600)
                                                    })
   
-  output$downloadBalancePlotEmf <- downloadHandler(filename = paste0("balanceplot_", input$database_bal, "_", names(which(list.idinfo$exposure == input$target_tb1)), "_", names(which(list.idinfo$exposure == input$comparator_tb1)), "_",
-                                                                     names(which(list.idinfo$outcome == input$outcome_tb1)), "_", names(which(list.idinfo$analysis == input$analysis_tb1)), ".emf"), 
-                                                   contentType = "application/emf", 
+  # output$downloadBalancePlotEmf <- downloadHandler(filename = paste0("balanceplot_", input$database_bal, "_", names(which(list.idinfo$exposure == input$target_tb1)), "_", names(which(list.idinfo$exposure == input$comparator_tb1)), "_",
+  #                                                                    names(which(list.idinfo$outcome == input$outcome_tb1)), "_", names(which(list.idinfo$analysis == input$analysis_tb1)), ".emf"), 
+  #                                                  contentType = "application/emf", 
+  #                                                  content = function(file) {
+  #                                                    devEMF::emf(file, width = input$width_bal, height = input$height_bal, emfPlus = F, coordDPI = 600)
+  #                                                    plot(balancePlot())
+  #                                                    dev.off()
+  #                                                  })
+  
+  output$downloadBalancePlotPPTX <- downloadHandler(filename = paste0("balanceplot_", input$database_bal, "_", names(which(list.idinfo$exposure == input$target_tb1)), "_", names(which(list.idinfo$exposure == input$comparator_tb1)), "_",
+                                                                     names(which(list.idinfo$outcome == input$outcome_tb1)), "_", names(which(list.idinfo$analysis == input$analysis_tb1)), ".pptx"), 
                                                    content = function(file) {
-                                                     devEMF::emf(file, width = input$width_bal, height = input$height_bal, emfPlus = F, coordDPI = 600)
-                                                     plot(balancePlot())
-                                                     dev.off()
-                                                   })
+                                                     withProgress(message = 'Download in progress',
+                                                                  detail = 'This may take a while...', value = 0, {
+                                                                    for (i in 1:15) {
+                                                                      incProgress(1/15)
+                                                                      Sys.sleep(0.01)
+                                                                    }
+                                                                    
+                                                                    my_balance_graph <- rvg::dml(ggobj  = balancePlot())
+                                                                    
+                                                                    doc <- officer::read_pptx()
+                                                                    doc <- officer::add_slide(doc, layout = "Title and Content", master = "Office Theme")
+                                                                    doc <- officer::ph_with(doc, my_balance_graph, location = officer::ph_location(width = input$width_bal, height = input$height_bal))
+                                                                    
+                                                                    print(doc, target = file)
+                                                                  })     
+                                                   }
+                                                   )
+  
   
   output$balancePlotCaption <- renderUI({
     text <- "<strong>Figure 3.</strong> Covariate balance before and after propensity score adjustment. Each dot represents
@@ -779,14 +864,35 @@ server <- function(input, output, session) {
                                                              ggplot2::ggsave(file, plot = systematicErrorPlot(), width = input$width_sys, height = input$height_sys, dpi = 600)
                                                            })
   
-  output$downloadSystematicErrorPlotEmf <- downloadHandler(filename = paste0("systematicerror", input$database_sys, "_", names(which(list.idinfo$exposure == input$target_tb1)), "_", names(which(list.idinfo$exposure == input$comparator_tb1)), "_",
-                                                                             names(which(list.idinfo$analysis == input$analysis_tb1)), ".emf"), 
-                                                           contentType = "application/emf", 
-                                                           content = function(file) {
-                                                             devEMF::emf(file, width = input$width_sys, height = input$height_sys, emfPlus = F, coordDPI = 600)
-                                                             plot(systematicErrorPlot())
-                                                             dev.off()
-                                                           })
+  # output$downloadSystematicErrorPlotEmf <- downloadHandler(filename = paste0("systematicerror", input$database_sys, "_", names(which(list.idinfo$exposure == input$target_tb1)), "_", names(which(list.idinfo$exposure == input$comparator_tb1)), "_",
+  #                                                                            names(which(list.idinfo$analysis == input$analysis_tb1)), ".emf"), 
+  #                                                          contentType = "application/emf", 
+  #                                                          content = function(file) {
+  #                                                            devEMF::emf(file, width = input$width_sys, height = input$height_sys, emfPlus = F, coordDPI = 600)
+  #                                                            plot(systematicErrorPlot())
+  #                                                            dev.off()
+  #                                                          })
+  
+  output$downloadSystematicErrorPlotPPTX <- downloadHandler(filename = paste0("systematicerror", input$database_sys, "_", names(which(list.idinfo$exposure == input$target_tb1)), "_", names(which(list.idinfo$exposure == input$comparator_tb1)), "_",
+                                                                             names(which(list.idinfo$analysis == input$analysis_tb1)), ".pptx"), 
+                                                            content = function(file) {
+                                                              withProgress(message = 'Download in progress',
+                                                                           detail = 'This may take a while...', value = 0, {
+                                                                             for (i in 1:15) {
+                                                                               incProgress(1/15)
+                                                                               Sys.sleep(0.01)
+                                                                             }
+                                                                             
+                                                                             my_se_graph <- rvg::dml(ggobj  = systematicErrorPlot())
+                                                                             
+                                                                             doc <- officer::read_pptx()
+                                                                             doc <- officer::add_slide(doc, layout = "Title and Content", master = "Office Theme")
+                                                                             doc <- officer::ph_with(doc, my_se_graph, location = officer::ph_location(width = input$width_sys, height = input$height_sys))
+                                                                             
+                                                                             print(doc, target = file)
+                                                                           })     
+                                                            }
+                                                           )
   
   observeEvent(input$comparator_tb1, {
     list.database_id <- data.result[ target_id == as.numeric(input$target_tb1) & comparator_id == as.numeric(input$comparator_tb1) & (outcome_id %in% list.idinfo$outcome) & analysis_id == as.numeric(input$analysis_tb1)][!is.na(rr) & !is.na(ci_95_lb) & !is.na(ci_95_ub)][, unique(database_id)]
@@ -843,7 +949,7 @@ server <- function(input, output, session) {
   output$downloadvoutPlotPng <- downloadHandler(filename = paste0("forestoutcomes", input$database_vout, ".png"), 
                                                 contentType = "image/png", 
                                                 content = function(file) {
-                                                  grDevices::png(file, width = input$width_vout, height = input$width_vout, units = "in")
+                                                  grDevices::png(file, width = input$width_vout, height = input$width_vout, units = "in", res = 600)
                                                   res <- obj.vout()$res
                                                   tabletext <- obj.vout()$tabletext
                                                   ## Save as tiff 
@@ -889,6 +995,51 @@ server <- function(input, output, session) {
                                                                          lwd.ci=2, ci.vertices=TRUE, ci.vertices.height = 0.16) 
                                                   dev.off()
                                                 })
+  
+  
+  output$downloadvoutPlotPPTX <- downloadHandler(filename = paste0("forestoutcomes", input$database_vout, ".pptx"),
+
+                                                content = function(file) {
+                                                  # 실행되지 않는 코드
+                                                  # withProgress(message = 'Download in progress',
+                                                  #              detail = 'This may take a while...', value = 0, {
+                                                  #                for (i in 1:15) {
+                                                  #                  incProgress(1/15)
+                                                  #                  Sys.sleep(0.01)
+                                                  #                }
+                                                  # 
+                                                  #                res <- obj.vout()$res
+                                                  #                tabletext <- obj.vout()$tabletext
+                                                  #                ## Save as tiff
+                                                  #                my_forest_plot <- forestplot::forestplot(labeltext=tabletext, graph.pos=2, xticks = c(0.1, 0.5, 1, 2, 10), xlog= T, align = c("r", rep("c", ncol(tabletext) - 1)),                          ## graph.pos- column number
+                                                  #                                       mean=c(NA,NA,as.numeric(res$rr)),
+                                                  #                                       lower=c(NA,NA,as.numeric(res$ci_95_lb)), upper=c(NA,NA,as.numeric(res$ci_95_ub)),
+                                                  #                                       title="Hazard Ratio",
+                                                  #                                       xlab="<---Favor Ranitidine ---    ---Favor Others --->",    ## You cas modify this.
+                                                  #                                       hrzl_lines=list("3" = gpar(lwd=1, col="#99999922")
+                                                  #                                       ),
+                                                  # 
+                                                  #                                       txt_gp=fpTxtGp(label=gpar(cex=1.25),
+                                                  #                                                      ticks=gpar(cex=1.1),
+                                                  #                                                      xlab=gpar(cex = 1.2),
+                                                  #                                                      title=gpar(cex = 1.2)),
+                                                  #                                       col=fpColors(box="black", lines="black", zero = "gray50"),
+                                                  #                                       zero=1, cex=0.9, lineheight = "auto", boxsize=0.2, colgap=unit(6,"mm"),
+                                                  #                                       lwd.ci=2, ci.vertices=TRUE, ci.vertices.height = 0.16)
+                                                  # 
+                                                  # 
+                                                  # 
+                                                  #                my_forest_graph <- rvg::dml(tiff::readTIFF(my_forest_plot))
+                                                  # 
+                                                  #                doc <- officer::read_pptx()
+                                                  #                doc <- officer::add_slide(doc, layout = "Title and Content", master = "Office Theme")
+                                                  #                doc <- officer::ph_with(doc, my_forest_graph, location = officer::ph_location(width = input$width_vout, height = input$width_vout))
+                                                  # 
+                                                  #                print(doc, target = file)
+                                                  #              })
+                                                }
+                                                )
+  
   
   ## RRDistr for each hospital
   # obj.RrDistr <- reactive({
@@ -1042,14 +1193,36 @@ server <- function(input, output, session) {
                                                      ggplot2::ggsave(file, plot = obj.RrDistr(), width = input$width_rrdistr, height = input$height_rrdistr, dpi = 600)
                                                    })
   
-  output$downloadrrdistrPlotEmf <- downloadHandler(filename = paste0("obj.RrDistr_", names(which(list.idinfo$exposure == input$target_tb1)), "_", names(which(list.idinfo$exposure == input$comparator_tb1)), "_",
-                                                                     names(which(list.idinfo$outcome == input$outcome)), ".emf"), 
-                                                   contentType = "application/emf", 
-                                                   content = function(file) {
-                                                     devEMF::emf(file, width = input$width_rrdistr, height = input$height_rrdistr, emfPlus = F, coordDPI = 600)
-                                                     plot(obj.RrDistr())
-                                                     dev.off()
-                                                   })
+  # output$downloadrrdistrPlotEmf <- downloadHandler(filename = paste0("obj.RrDistr_", names(which(list.idinfo$exposure == input$target_tb1)), "_", names(which(list.idinfo$exposure == input$comparator_tb1)), "_",
+  #                                                                    names(which(list.idinfo$outcome == input$outcome)), ".emf"), 
+  #                                                  contentType = "application/emf", 
+  #                                                  content = function(file) {
+  #                                                    devEMF::emf(file, width = input$width_rrdistr, height = input$height_rrdistr, emfPlus = F, coordDPI = 600)
+  #                                                    plot(obj.RrDistr())
+  #                                                    dev.off()
+  #                                                  })
+  
+  output$downloadrrdistrPlotPPTX <- downloadHandler(filename = paste0("obj.RrDistr_", names(which(list.idinfo$exposure == input$target_tb1)), "_", names(which(list.idinfo$exposure == input$comparator_tb1)), "_",
+                                                                     names(which(list.idinfo$outcome == input$outcome)), ".pptx"), 
+                                                   
+                                                    content = function(file) {
+                                                      withProgress(message = 'Download in progress',
+                                                                   detail = 'This may take a while...', value = 0, {
+                                                                     for (i in 1:15) {
+                                                                       incProgress(1/15)
+                                                                       Sys.sleep(0.01)
+                                                                     }
+                                                                     
+                                                                     my_hr_graph <- rvg::dml(ggobj  = obj.RrDistr())
+                                                                     
+                                                                     doc <- officer::read_pptx()
+                                                                     doc <- officer::add_slide(doc, layout = "Title and Content", master = "Office Theme")
+                                                                     doc <- officer::ph_with(doc, my_hr_graph, location = officer::ph_location(width = input$width_rrdistr, height = input$height_rrdistr))
+                                                                     
+                                                                     print(doc, target = file)
+                                                                   })     
+                                                    }
+                                                   )
   
   ## Sensitivity analysis
   
@@ -1088,16 +1261,36 @@ server <- function(input, output, session) {
                                                   ggplot2::ggsave(file, plot = obj.sens(), width = input$width_sens, height = input$height_sens, dpi = 600)
                                                 })
   
-  output$downloadsensPlotEmf <- downloadHandler(filename = paste0("Sensitivity", input$database_sens, "_", names(which(list.idinfo$exposure == input$target_tb1)), "_", names(which(list.idinfo$exposure == input$comparator_tb1)), "_",
-                                                                  input$outcomegroup_sens, ".emf"), 
-                                                contentType = "application/emf", 
-                                                content = function(file) {
-                                                  devEMF::emf(file, width = input$width_sens, height = input$height_sens, emfPlus = F, coordDPI = 600)
-                                                  plot(obj.sens())
-                                                  dev.off()
-                                                })
+  # output$downloadsensPlotEmf <- downloadHandler(filename = paste0("Sensitivity", input$database_sens, "_", names(which(list.idinfo$exposure == input$target_tb1)), "_", names(which(list.idinfo$exposure == input$comparator_tb1)), "_",
+  #                                                                 input$outcomegroup_sens, ".emf"), 
+  #                                               contentType = "application/emf", 
+  #                                               content = function(file) {
+  #                                                 devEMF::emf(file, width = input$width_sens, height = input$height_sens, emfPlus = F, coordDPI = 600)
+  #                                                 plot(obj.sens())
+  #                                                 dev.off()
+  #                                               })
   
-  
+  output$downloadsensPlotPPTX <- downloadHandler(filename = paste0("Sensitivity", input$database_sens, "_", names(which(list.idinfo$exposure == input$target_tb1)), "_", names(which(list.idinfo$exposure == input$comparator_tb1)), "_",
+                                                                  input$outcomegroup_sens, ".pptx"),
+                                                 
+                                                 content = function(file) {
+                                                   withProgress(message = 'Download in progress',
+                                                                detail = 'This may take a while...', value = 0, {
+                                                                  for (i in 1:15) {
+                                                                    incProgress(1/15)
+                                                                    Sys.sleep(0.01)
+                                                                  }
+                                                                  
+                                                                  my_sens_graph <- rvg::dml(ggobj  = obj.sens())
+                                                                  
+                                                                  doc <- officer::read_pptx()
+                                                                  doc <- officer::add_slide(doc, layout = "Title and Content", master = "Office Theme")
+                                                                  doc <- officer::ph_with(doc, my_sens_graph, location = officer::ph_location(width = input$width_sens, height = input$height_sens))
+                                                                  
+                                                                  print(doc, target = file)
+                                                                })     
+                                                 }
+                                                )
   
   
   session$onSessionEnded(function() {
